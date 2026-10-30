@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let port = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(3008);
+        .unwrap_or(3003);
 
     let web_server = WebServer::new(supervisor.clone(), port);
     tokio::spawn(async move {
@@ -100,24 +100,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tick += 1;
 
             let mut total_kills = 0u64;
-            let mut total_gold = 0u64;
-            let mut total_exp = 0u64;
+            let mut total_gold = 0i64;
             let active_bots = sup_clone.bots();
+            let mut summaries = Vec::new();
 
             for b in active_bots {
-                total_kills += b.kills.load(Ordering::Relaxed);
-                total_gold += b.gold.load(Ordering::Relaxed);
-                total_exp += b.exp.load(Ordering::Relaxed);
+                let st = b.status.lock().await.clone();
+                total_kills += st.kills;
+                total_gold += st.gold;
+                summaries.push(format!("[{}] {} (Lv. {}) | Area: {} | Kills: {} | Status: {}", b.config.id, st.name, st.level, st.current_area, st.kills, st.status));
             }
 
-            info!(
-                "[Console Ticker #{}] Contas: {} | Kills: {} | Gold: {} | Exp: {}",
-                tick,
-                active_bots.len(),
-                total_kills,
-                format_number(total_gold),
-                format_number(total_exp)
-            );
+            println!("================================================================================");
+            println!("   ⚡ BOT ENGINE CONSOLE RUST ZERO-GC — Ticker #{} | Contas: {} | Ouro: {} | Kills: {}", tick, summaries.len(), format_number(total_gold.max(0) as u64), total_kills);
+            println!("   🌐 Dashboard Web: http://localhost:{}", port);
+            println!("================================================================================");
+            for s in summaries {
+                println!(" ▸ {}", s);
+            }
         }
     });
 

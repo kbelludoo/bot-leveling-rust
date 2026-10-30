@@ -5,7 +5,7 @@ use tokio_tungstenite::{
     tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
     MaybeTlsStream, WebSocketStream,
 };
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 pub type WsWriter = futures_util::stream::SplitSink<
     WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>,
@@ -75,7 +75,7 @@ impl LevelingSocketClient {
     pub async fn send_binary(&self, data: Vec<u8>) -> Result<(), String> {
         let mut writer_lock = self.writer.lock().await;
         if let Some(w) = writer_lock.as_mut() {
-            w.send(Message::Binary(data.into()))
+            w.send(Message::Binary(data))
                 .await
                 .map_err(|e| format!("Falha de envio WS binário: {e}"))
         } else {

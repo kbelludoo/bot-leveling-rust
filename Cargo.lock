@@ -134,6 +134,7 @@ dependencies = [
  "futures-util",
  "hex",
  "hmac",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",

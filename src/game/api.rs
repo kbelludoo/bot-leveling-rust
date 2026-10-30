@@ -2,6 +2,7 @@ use crate::game::types::AccountConfig;
 use crate::network::client::StealthHttpClient;
 use std::sync::Arc;
 
+#[allow(dead_code)]
 pub struct GameApiClient {
     http: Arc<StealthHttpClient>,
     config: AccountConfig,

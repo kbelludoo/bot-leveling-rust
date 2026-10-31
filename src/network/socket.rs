@@ -42,6 +42,10 @@ impl LevelingSocketClient {
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             ),
         );
+        headers.insert(
+            "Origin",
+            HeaderValue::from_static("https://levelingidle2d.com.br"),
+        );
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(req)
             .await
@@ -49,6 +53,7 @@ impl LevelingSocketClient {
 
         let (writer, mut reader) = ws_stream.split();
         *self.writer.lock().await = Some(writer);
+        let writer_cleanup = Arc::clone(&self.writer);
 
         tokio::spawn(async move {
             while let Some(msg_result) = reader.next().await {
@@ -67,9 +72,14 @@ impl LevelingSocketClient {
                     _ => {}
                 }
             }
+            *writer_cleanup.lock().await = None;
         });
 
         Ok(())
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        self.writer.lock().await.is_some()
     }
 
     pub async fn send_binary(&self, data: Vec<u8>) -> Result<(), String> {
@@ -81,9 +91,5 @@ impl LevelingSocketClient {
         } else {
             Err("WebSocket desconectado".to_string())
         }
-    }
-
-    pub async fn is_connected(&self) -> bool {
-        self.writer.lock().await.is_some()
     }
 }

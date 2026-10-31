@@ -80,13 +80,19 @@ impl BotInstance {
         let cb = Arc::new(CircuitBreaker::new(&config.id, cb_cfg));
         let stam = Arc::new(StaminaController::new(StaminaConfig::default()));
 
+        let device_uuid = if !config.credentials.device_uuid.is_empty() {
+            config.credentials.device_uuid.clone()
+        } else {
+            uuid::Uuid::new_v4().to_string()
+        };
+
         let ws_url = if config.credentials.origin.is_empty() {
-            "wss://api.leveling.idle/ws".to_string()
+            format!("wss://levelingidle2d.com.br/ws?device={}", device_uuid)
         } else {
             let orig = &config.credentials.origin;
             let scheme = if orig.starts_with("https") { "wss" } else { "ws" };
             let host = orig.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/');
-            format!("{}://{}/ws", scheme, host)
+            format!("{}://{}/ws?device={}", scheme, host, device_uuid)
         };
 
         let socket = Arc::new(LevelingSocketClient::new(&ws_url));
@@ -1106,29 +1112,54 @@ impl BotInstance {
         self.running.store(true, Ordering::SeqCst);
         info!("🚀 Bot [{}] (Leveling Idle 100% Paridade - Native Rust Zero-GC) iniciado.", self.config.name);
 
-        let self_clone = self.clone();
-        let _ = self.socket.connect(move |bin| {
-            let sc = self_clone.clone();
-            tokio::spawn(async move {
-                sc.handle_inbound_packet(&bin).await;
-            });
-        }).await;
-
-        sleep(Duration::from_millis(500)).await;
-        let _ = self.send_auth().await;
-
-        let mut ping_timer = tokio::time::interval(Duration::from_secs(30));
-        let mut tick_timer = tokio::time::interval(Duration::from_secs(3));
-
         while self.running.load(Ordering::Relaxed) {
-            tokio::select! {
-                _ = ping_timer.tick() => {
-                    let _ = self.send_ping().await;
+            {
+                let mut st = self.status.lock().await;
+                st.status = "Conectando ao servidor...".to_string();
+            }
+
+            let self_clone = self.clone();
+            match self.socket.connect(move |bin| {
+                let sc = self_clone.clone();
+                tokio::spawn(async move {
+                    sc.handle_inbound_packet(&bin).await;
+                });
+            }).await {
+                Ok(_) => {
+                    info!("[{}] Conexão WebSocket estabelecida com sucesso. Enviando login...", self.config.id);
+                    {
+                        let mut st = self.status.lock().await;
+                        st.status = "Autenticando...".to_string();
+                    }
+                    sleep(Duration::from_millis(500)).await;
+                    if let Err(e) = self.send_auth().await {
+                        tracing::error!("[{}] Falha ao enviar auth: {}", self.config.id, e);
+                    }
+
+                    let mut ping_timer = tokio::time::interval(Duration::from_secs(10));
+                    let mut tick_timer = tokio::time::interval(Duration::from_secs(3));
+
+                    while self.running.load(Ordering::Relaxed) && self.socket.is_connected().await {
+                        tokio::select! {
+                            _ = ping_timer.tick() => {
+                                let _ = self.send_ping().await;
+                            }
+                            _ = tick_timer.tick() => {
+                                self.perform_tick().await;
+                            }
+                        }
+                    }
+                    tracing::warn!("[{}] Conexão perdida. Reconectando em 5 segundos...", self.config.id);
                 }
-                _ = tick_timer.tick() => {
-                    self.perform_tick().await;
+                Err(e) => {
+                    tracing::error!("[{}] Erro ao conectar WebSocket: {}. Reconectando em 5 segundos...", self.config.id, e);
+                    {
+                        let mut st = self.status.lock().await;
+                        st.status = format!("Erro de conexão: {e}");
+                    }
                 }
             }
+            sleep(Duration::from_secs(5)).await;
         }
     }
 }

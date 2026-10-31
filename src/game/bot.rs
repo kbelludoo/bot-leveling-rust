@@ -1073,16 +1073,19 @@ impl BotInstance {
             let _ = self.send_repair_all().await;
         }
 
-        // 8. Claim Missions (60s)
-        if self.config.settings.auto_missions && self.last_mission_check.lock().await.elapsed() > Duration::from_secs(60) {
+        // 8. Claim Missions (a cada ~5 min com jitter de 4m a 6m)
+        let mission_jitter = 0.8 + rand::random::<f64>() * 0.4;
+        if self.config.settings.auto_missions && self.last_mission_check.lock().await.elapsed() > Duration::from_secs_f64(300.0 * mission_jitter) {
             *self.last_mission_check.lock().await = Instant::now();
             let _ = self.send_claim_missions().await;
         }
 
-        // 9. Shadows (60s)
-        if self.config.settings.auto_shadows && self.last_shadow_check.lock().await.elapsed() > Duration::from_secs(60) {
+        // 9. Shadows (a cada ~3-5 min com jitter e pacing entre time e equipamento)
+        let shadow_jitter = 0.8 + rand::random::<f64>() * 0.4;
+        if self.config.settings.auto_shadows && self.last_shadow_check.lock().await.elapsed() > Duration::from_secs_f64(240.0 * shadow_jitter) {
             *self.last_shadow_check.lock().await = Instant::now();
             let _ = self.send_shadow_team_best().await;
+            tokio::time::sleep(Duration::from_millis(300 + (rand::random::<u64>() % 300))).await;
             let _ = self.send_shadow_equip_best().await;
         }
 

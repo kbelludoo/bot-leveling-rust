@@ -1137,14 +1137,16 @@ impl BotInstance {
                     }
 
                     let mut ping_timer = tokio::time::interval(Duration::from_secs(10));
-                    let mut tick_timer = tokio::time::interval(Duration::from_secs(3));
 
                     while self.running.load(Ordering::Relaxed) && self.socket.is_connected().await {
                         tokio::select! {
                             _ = ping_timer.tick() => {
                                 let _ = self.send_ping().await;
                             }
-                            _ = tick_timer.tick() => {
+                            _ = async {
+                                let jitter = 0.8 + rand::random::<f64>() * 0.4;
+                                sleep(Duration::from_secs_f64(3.0 * jitter)).await;
+                            } => {
                                 self.perform_tick().await;
                             }
                         }
